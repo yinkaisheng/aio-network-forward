@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aio_network_forward"
+version = "0.1.0"
+description = "Lightweight async TCP/UDP port forwarding utility built on asyncio"
+readme = "README.md"
+authors = [{name = "yinkaisheng", email = "yinkaisheng@foxmail.com"}]
+license = {text = "Apache-2.0"}
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+]
+requires-python = ">=3.8"
+keywords = ["asyncio", "socket", "network", "forward"]
+dependencies = ["aio-sockets"]
+
+[project.urls]
+Homepage = "https://github.com/yinkaisheng/aio-network-forward"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["aio_network_forward"]
