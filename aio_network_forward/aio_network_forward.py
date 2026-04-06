@@ -179,7 +179,7 @@ async def _udp_forward_to_local(src_addr: aio.IPAddress, local_addr: aio.IPAddre
                 break
             # logfunc(f'forward to local {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr} len={len(data)}, {data!r}')
             local_sock.sendto(data, src_addr)
-        except asyncio.TimeoutError as ex:
+        except (TimeoutError, asyncio.TimeoutError) as ex:
             logfunc(f'close forward after {timeout}s no data {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
             break
         except Exception as ex:
