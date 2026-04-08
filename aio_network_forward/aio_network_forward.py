@@ -1,19 +1,14 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-# author: yinkaisheng@foxmail.com
-# support python 3.8+
-import os
-import sys
-import time
-import socket
+# Compatible with Python 3.8+
+
 import asyncio
-import inspect
-from datetime import datetime
-from typing import (Any, AsyncGenerator, Callable, Deque, Dict, Generator, List, Iterable, Iterator, Sequence, Set, Tuple, Union)
+import socket
+from typing import Any, Dict, List
+
 import aio_sockets as aio
 
 
 __version__ = '0.1.0'
+logger: aio.LoggerLike = aio.StdoutLogger()
 
 
 class TCPServerInfo:
@@ -30,7 +25,6 @@ _tcp_laddr2raddr: Dict[int, aio.IPAddress] = {}
 _tcp_faddr2server: Dict[aio.IPAddress, TCPServerInfo] = {}
 _udp_faddr2sock: Dict[aio.IPAddress, aio.UDPSocket] = {}
 _tcp_read_size = 8192 # 8kb
-logfunc = print
 
 
 async def _handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
@@ -48,7 +42,7 @@ async def _handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.Strea
     sock = aio.TCPSocket(reader, writer)
     local_addr: aio.IPAddress = sock.getsockname()
     from_addr: aio.IPAddress = sock.getpeername()
-    logfunc(f'new client {from_addr} -> {local_addr}')
+    logger.info(f'new client {from_addr} -> {local_addr}')
     forward_to_addr = _tcp_laddr2raddr[local_addr[1]]
     family=socket.AF_INET6 if ':' in local_addr[0] else socket.AF_INET
 
@@ -59,9 +53,9 @@ async def _handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.Strea
         server_info = _tcp_faddr2server[forward_to_addr]
         server_info.forward_socks.append(forward_sock)
         forward_from_addr = forward_sock.getsockname()
-        logfunc(f'new forward {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
+        logger.info(f'new forward {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
     except Exception as ex:
-        logfunc(f'new forward {from_addr} -> {local_addr}, ? -> {forward_to_addr} failed, ex={ex!r}')
+        logger.error(f'new forward {from_addr} -> {local_addr}, ? -> {forward_to_addr} failed, ex={ex!r}')
         await sock.close()
         return
 
@@ -71,16 +65,16 @@ async def _handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.Strea
             while True:
                 data = await sock.recv(_tcp_read_size)
                 if not data:
-                    logfunc(f'local close {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}'
+                    logger.info(f'local close {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}'
                             f', forward_len={forward_len}')
                     break
                 readn = len(data)
                 forward_len += readn
-                # logfunc(f'forward to remote {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}: len={readn}, data={data!r}')
+                # logger.info(f'forward to remote {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}: len={readn}, data={data!r}')
                 await forward_sock.send(data)
             await forward_sock.close()
-        except BaseException as ex:
-            logfunc(f'ex={ex!r}')
+        except Exception as ex:
+            logger.error(f'ex={ex!r}')
 
     async def remote_to_local_io() -> None:
         forward_len = 0
@@ -88,16 +82,16 @@ async def _handle_tcp_client(reader: asyncio.StreamReader, writer: asyncio.Strea
             while True:
                 data = await forward_sock.recv(_tcp_read_size)
                 if not data:
-                    logfunc(f'forward close {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}'
+                    logger.info(f'forward close {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}'
                             f', forward_len={forward_len}')
                     break
                 readn = len(data)
                 forward_len += readn
-                # logfunc(f'forward to local {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr} len={len(readn)}, {data!r}')
+                # logger.info(f'forward to local {from_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr} len={len(readn)}, {data!r}')
                 await sock.send(data)
             await sock.close()
-        except BaseException as ex:
-            logfunc(f'ex={ex!r}')
+        except Exception as ex:
+            logger.error(f'ex={ex!r}')
 
     asyncio.create_task(local_to_remote_io())
     asyncio.create_task(remote_to_local_io())
@@ -118,22 +112,22 @@ async def start_forward_tcp(forward_to_addr: aio.IPAddress, local_port: int) -> 
         server: asyncio.base_events.Server = await asyncio.start_server(
             _handle_tcp_client, local_ip, local_port, family=family)
     except Exception as ex:
-        logfunc(f'{local_port} may be used, use random port, ex={ex!r}')
+        logger.warning(f'{local_port} may be used, use random port, ex={ex!r}')
         server: asyncio.base_events.Server = await asyncio.start_server(
             _handle_tcp_client, local_ip, 0, family=family)
     sock: asyncio.transports.TransportSocket = server.sockets[0]
     local_addr: aio.IPAddress = sock.getsockname()
     _tcp_laddr2raddr[local_addr[1]] = forward_to_addr
     _tcp_faddr2server[forward_to_addr] = TCPServerInfo(server)
-    logfunc(f'serving on {local_addr} for {forward_to_addr}')
+    logger.info(f'serving on {local_addr} for {forward_to_addr}')
 
     async def tcp_serve_forever():
         try:
             await server.serve_forever()
         except asyncio.exceptions.CancelledError as ex:
-            logfunc(f'{ex!r}')
+            logger.error(f'{ex!r}')
         except Exception as ex:
-            logfunc(f'{ex!r}')
+            logger.error(f'{ex!r}')
         finally:
             _tcp_laddr2raddr.pop(local_addr[1], None)
 
@@ -152,7 +146,7 @@ async def stop_forward_tcp(forward_to_addr: aio.IPAddress) -> None:
         for listen_port, forward_addr in _tcp_laddr2raddr.items():
             if forward_addr == forward_to_addr:
                 break
-        logfunc(f'close server {listen_port} for {forward_to_addr}')
+        logger.info(f'close server {listen_port} for {forward_to_addr}')
         for sock in server_info.forward_socks:
             await sock.close()
         server_info.forward_socks.clear()
@@ -175,17 +169,17 @@ async def _udp_forward_to_local(src_addr: aio.IPAddress, local_addr: aio.IPAddre
         try:
             data, addr = await forward_sock.recvfrom_timeout(timeout=timeout)
             if data is None:
-                logfunc(f'close forward {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
+                logger.info(f'close forward {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
                 break
-            # logfunc(f'forward to local {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr} len={len(data)}, {data!r}')
+            # logger.info(f'forward to local {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr} len={len(data)}, {data!r}')
             local_sock.sendto(data, src_addr)
-        except (TimeoutError, asyncio.TimeoutError) as ex:
-            logfunc(f'close forward after {timeout}s no data {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
+        except asyncio.TimeoutError as ex:
+            logger.warning(f'close forward after {timeout}s no data {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
             break
         except Exception as ex:
             # Windows: if remote endpoint is not listening, recvfrom raises OSError
             # Linux: if remote endpoint is not listening, recvfrom raises ConnectionRefusedError
-            logfunc(f'{src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}'
+            logger.error(f'{src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}'
                 f' forward_sock.recvfrom got an ex={ex!r}')
     forward_sock.close()
     udp_src_addr_to_sock.pop(src_addr, None)
@@ -202,7 +196,7 @@ async def _udp_serve_forever(forward_to_addr: aio.IPAddress, local_addr: aio.IPA
     while True:
         data, src_addr = await local_sock.recvfrom()
         if data is None:
-            logfunc(f'close server {local_addr} for {forward_to_addr}')
+            logger.info(f'close server {local_addr} for {forward_to_addr}')
             break
 
         forward_sock = udp_src_addr_to_sock.get(src_addr, None)
@@ -210,10 +204,10 @@ async def _udp_serve_forever(forward_to_addr: aio.IPAddress, local_addr: aio.IPA
             forward_sock = await aio.create_udp_socket(remote_addr=forward_to_addr, family=family)
             forward_from_addr = forward_sock.getsockname()
             udp_src_addr_to_sock[src_addr] = forward_sock
-            logfunc(f'new forward {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
+            logger.info(f'new forward {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr}')
             asyncio.create_task(_udp_forward_to_local(src_addr, local_addr, forward_from_addr, forward_to_addr,
                 local_sock, forward_sock, udp_src_addr_to_sock))
-        # logfunc(f'forward to remote {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr} len={len(data)}, {data!r}')
+        # logger.info(f'forward to remote {src_addr} -> {local_addr}, {forward_from_addr} -> {forward_to_addr} len={len(data)}, {data!r}')
         forward_sock.sendto(data, None)
 
     for src_addr, forward_sock in udp_src_addr_to_sock.items():
@@ -235,10 +229,10 @@ async def start_forward_udp(forward_to_addr: aio.IPAddress, local_port: int) -> 
     try:
         sock = await aio.create_udp_socket(local_addr=(local_ip, local_port))
     except Exception as ex:
-        logfunc(f'{local_port} may be used, use random port, ex={ex!r}')
+        logger.warning(f'{local_port} may be used, use random port, ex={ex!r}')
         sock = await aio.create_udp_socket(local_addr=(local_ip, 0))
     local_addr = sock.getsockname()
-    logfunc(f'serving on {local_addr} for {forward_to_addr}')
+    logger.info(f'serving on {local_addr} for {forward_to_addr}')
     _udp_faddr2sock[forward_to_addr] = sock
 
     asyncio.create_task(_udp_serve_forever(forward_to_addr, local_addr, sock))
