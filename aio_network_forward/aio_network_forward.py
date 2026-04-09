@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 import aio_sockets as aio
 
 
-__version__ = '0.1.0'
+__version__ = '0.1.1'
 logger: aio.LoggerLike = aio.StdoutLogger()
 
 

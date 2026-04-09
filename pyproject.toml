@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aio_network_forward"
-version = "0.1.0"
+version = "0.1.1"
 description = "Lightweight async TCP/UDP port forwarding utility built on asyncio"
 readme = "README.md"
 authors = [{name = "yinkaisheng", email = "yinkaisheng@foxmail.com"}]
